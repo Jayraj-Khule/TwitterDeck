@@ -1,11 +1,11 @@
 // Application Configuration
 const CONFIG = {
     api: {
-        key: '0a7f3e9406msh5385ead16268ba6p196e5ejsn196d4ea2ccb2',
+        key: '877c182286msh70c5fe3accdde71p1c33b6jsnf69959f80fcd',
         baseUrl: 'https://twitter-api45.p.rapidapi.com',
         endpoint: '/search.php',
         headers: {
-            'X-RapidAPI-Key': '0a7f3e9406msh5385ead16268ba6p196e5ejsn196d4ea2ccb2',
+            'X-RapidAPI-Key': '877c182286msh70c5fe3accdde71p1c33b6jsnf69959f80fcd',
             'X-RapidAPI-Host': 'twitter-api45.p.rapidapi.com'
         }
     },
@@ -20,6 +20,7 @@ const CONFIG = {
     ]
 };
 
+
 // Application State
 const state = {
     columns: new Map(),
@@ -28,12 +29,14 @@ const state = {
     refreshIntervals: new Map()
 };
 
+
 // API Service
 const api = {
     async searchTweets(query, count = 20, isSilent = false) {
         const url = new URL(CONFIG.api.baseUrl + CONFIG.api.endpoint);
         url.searchParams.append('query', query);
         url.searchParams.append('count', count.toString());
+
 
         try {
             if (!isSilent) {
@@ -45,9 +48,11 @@ const api = {
                 headers: CONFIG.api.headers
             });
 
+
             if (!response.ok) {
                 throw new Error(`API request failed: ${response.status} ${response.statusText}`);
             }
+
 
             const data = await response.json();
             state.requestsUsed++;
@@ -64,6 +69,7 @@ const api = {
         }
     },
 
+
     updateRateLimit() {
         const usageElement = document.getElementById('apiUsage');
         if (usageElement) {
@@ -71,6 +77,7 @@ const api = {
         }
     }
 };
+
 
 // Tweet Column Class
 class TweetColumn {
@@ -86,6 +93,7 @@ class TweetColumn {
         this.lastUpdate = null;
     }
 
+
     async loadTweets(isSilent = false) {
         if (!isSilent) {
             this.isLoading = true;
@@ -93,6 +101,7 @@ class TweetColumn {
         }
         
         this.hasError = false;
+
 
         try {
             const data = await api.searchTweets(this.config.query, 20, isSilent);
@@ -111,6 +120,7 @@ class TweetColumn {
                 console.warn('Unexpected API response structure:', data);
                 tweets = [];
             }
+
 
             const newTweets = this.processTweets(tweets);
             
@@ -133,51 +143,95 @@ class TweetColumn {
         }
     }
 
+
     processTweets(tweetData) {
         if (!Array.isArray(tweetData)) {
             console.warn('Tweet data is not an array:', tweetData);
             return [];
         }
 
-        return tweetData.map(tweet => {
+
+        return tweetData.map((tweet, index) => {
+            // Debug: Log the structure of each tweet to understand the data format
+            if (index === 0) {
+                console.log('Sample tweet structure:', tweet);
+            }
+            
             // Handle different possible data structures
-            const tweetText = tweet.text || tweet.full_text || tweet.tweet || 'No content available';
+            const tweetText = tweet.text || tweet.full_text || tweet.tweet || tweet.content || 'No content available';
             
-            // Extract user information
-            const user = tweet.user || tweet.author || {};
-            const userName = user.name || user.display_name || 'Unknown User';
-            const userScreenName = user.screen_name || user.username || tweet.username || 'unknown';
-            const userAvatar = user.profile_image_url_https || user.profile_image_url || user.avatar || null;
+            // Extract user information with more comprehensive fallbacks
+            const user = tweet.user || tweet.author || tweet.user_info || {};
             
-            // Extract timestamp
-            const createdAt = tweet.created_at || tweet.date || tweet.timestamp || new Date().toISOString();
+            // Get user name with multiple fallback options
+            let userName = user.name || user.display_name || user.full_name || user.realname || tweet.user_name || tweet.author_name;
+            if (!userName || userName.trim() === '') {
+                userName = 'Unknown User';
+            }
             
-            // Extract engagement metrics
-            const likes = parseInt(tweet.favorite_count || tweet.favorites || tweet.likes || 0);
-            const retweets = parseInt(tweet.retweet_count || tweet.retweets || 0);
-            const replies = parseInt(tweet.reply_count || tweet.replies || 0);
+            // Get username/screen name with multiple fallback options
+            let userScreenName = user.screen_name || user.username || user.handle || tweet.username || tweet.screen_name || tweet.handle || tweet.user_screen_name;
             
-            // Extract media
+            // Clean up username - remove @ if present and ensure it's not empty
+            if (userScreenName) {
+                userScreenName = userScreenName.replace('@', '').trim();
+                if (userScreenName === '') {
+                    userScreenName = 'unknown';
+                }
+            } else {
+                userScreenName = 'unknown';
+            }
+            
+            // Get user avatar with multiple fallback options
+            const userAvatar = user.profile_image_url_https || 
+                              user.profile_image_url || 
+                              user.avatar || 
+                              user.profile_pic || 
+                              user.image || 
+                              tweet.user_avatar || 
+                              tweet.avatar || 
+                              null;
+            
+            // Extract timestamp with multiple fallback options
+            const createdAt = tweet.created_at || 
+                             tweet.date || 
+                             tweet.timestamp || 
+                             tweet.time || 
+                             new Date().toISOString();
+            
+            // Extract engagement metrics with better handling
+            const likes = parseInt(tweet.favorite_count || tweet.favourites_count || tweet.favorites || tweet.likes || tweet.like_count || 0);
+            const retweets = parseInt(tweet.retweet_count || tweet.retweets || tweet.rt_count || 0);
+            const replies = parseInt(tweet.reply_count || tweet.replies || tweet.reply || 0);
+            
+            // Extract media with improved handling
             const media = [];
             if (tweet.entities && tweet.entities.media) {
                 media.push(...tweet.entities.media.map(m => ({
-                    url: m.media_url_https || m.media_url,
-                    type: m.type
+                    url: m.media_url_https || m.media_url || m.url,
+                    type: m.type || 'photo'
                 })));
             }
             if (tweet.media && Array.isArray(tweet.media)) {
                 media.push(...tweet.media.map(m => ({
-                    url: m.media_url_https || m.url,
-                    type: m.type
+                    url: m.media_url_https || m.url || m.media_url,
+                    type: m.type || 'photo'
+                })));
+            }
+            if (tweet.attachments && tweet.attachments.media) {
+                media.push(...tweet.attachments.media.map(m => ({
+                    url: m.media_url_https || m.url || m.media_url,
+                    type: m.type || 'photo'
                 })));
             }
 
-            return {
-                id: tweet.id_str || tweet.id || tweet.tweetID || `tweet_${Math.random().toString(36).substr(2, 9)}`,
+
+            const processedTweet = {
+                id: tweet.id_str || tweet.id || tweet.tweetID || tweet.tweet_id || `tweet_${Math.random().toString(36).substr(2, 9)}`,
                 text: tweetText,
                 user: {
-                    name: userName,
-                    username: userScreenName,
+                    name: userName.trim(),
+                    username: userScreenName, // Store without @ symbol
                     avatar: userAvatar
                 },
                 timestamp: this.formatTimestamp(createdAt),
@@ -190,8 +244,23 @@ class TweetColumn {
                 created_at: createdAt,
                 isNew: false
             };
-        }).filter(tweet => tweet.text !== 'No content available' || tweet.user.name !== 'Unknown User');
+
+            // Debug: Log processed user info for first tweet
+            if (index === 0) {
+                console.log('Processed user info:', {
+                    name: processedTweet.user.name,
+                    username: processedTweet.user.username,
+                    avatar: processedTweet.user.avatar
+                });
+            }
+
+            return processedTweet;
+        }).filter(tweet => {
+            // More lenient filtering - keep tweets even if some info is missing
+            return tweet.text !== 'No content available' && tweet.user.name !== 'Unknown User';
+        });
     }
+
 
     updateTweetsSilently(newTweets) {
         if (newTweets.length === 0) return;
@@ -207,6 +276,7 @@ class TweetColumn {
         }
     }
 
+
     showNewTweetsBanner() {
         if (this.element) {
             const banner = this.element.querySelector('.new-tweets-banner');
@@ -218,6 +288,7 @@ class TweetColumn {
             }
         }
     }
+
 
     loadNewTweets() {
         if (this.newTweetsCount > 0) {
@@ -238,6 +309,7 @@ class TweetColumn {
         }
     }
 
+
     formatTimestamp(dateString) {
         try {
             const date = new Date(dateString);
@@ -246,6 +318,7 @@ class TweetColumn {
             const diffMins = Math.floor(diffMs / 60000);
             const diffHours = Math.floor(diffMins / 60);
             const diffDays = Math.floor(diffHours / 24);
+
 
             if (diffMins < 1) return 'now';
             if (diffMins < 60) return `${diffMins}m`;
@@ -257,10 +330,13 @@ class TweetColumn {
         }
     }
 
+
     updateUI() {
         if (!this.element) return;
 
+
         const content = this.element.querySelector('.column-content');
+
 
         if (this.isLoading) {
             content.innerHTML = `
@@ -271,6 +347,7 @@ class TweetColumn {
             `;
             return;
         }
+
 
         if (this.hasError) {
             content.innerHTML = `
@@ -286,6 +363,7 @@ class TweetColumn {
             return;
         }
 
+
         if (this.tweets.length === 0) {
             content.innerHTML = `
                 <div class="column-error">
@@ -300,15 +378,23 @@ class TweetColumn {
             return;
         }
 
+
         const tweetsHtml = this.tweets.map(tweet => this.renderTweet(tweet)).join('');
         content.innerHTML = tweetsHtml;
     }
 
+
     renderTweet(tweet) {
-        const avatarContent = tweet.user.avatar 
-            ? `<img src="${tweet.user.avatar}" alt="${tweet.user.name}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-               <div style="display:none; width:100%; height:100%; background: var(--color-primary); color: var(--color-btn-primary-text); align-items:center; justify-content:center; font-weight:bold;">${tweet.user.name.charAt(0).toUpperCase()}</div>`
-            : `<div style="width:100%; height:100%; background: var(--color-primary); color: var(--color-btn-primary-text); display:flex; align-items:center; justify-content:center; font-weight:bold;">${tweet.user.name.charAt(0).toUpperCase()}</div>`;
+        // Ensure user info exists and provide fallbacks
+        const displayName = tweet.user?.name || 'Unknown User';
+        const displayUsername = tweet.user?.username || 'unknown';
+        
+        // Create avatar content with better fallback
+        const avatarContent = tweet.user?.avatar 
+            ? `<img src="${tweet.user.avatar}" alt="${displayName}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+               <div style="display:none; width:100%; height:100%; background: var(--color-primary); color: var(--color-btn-primary-text); align-items:center; justify-content:center; font-weight:bold; border-radius: 50%;">${displayName.charAt(0).toUpperCase()}</div>`
+            : `<div style="width:100%; height:100%; background: var(--color-primary); color: var(--color-btn-primary-text); display:flex; align-items:center; justify-content:center; font-weight:bold; border-radius: 50%;">${displayName.charAt(0).toUpperCase()}</div>`;
+
 
         const mediaHtml = tweet.media && tweet.media.length > 0 
             ? `<div class="tweet-media">
@@ -320,6 +406,7 @@ class TweetColumn {
                </div>`
             : '';
 
+
         return `
             <div class="tweet-card ${tweet.isNew ? 'new' : ''}" data-tweet-id="${tweet.id}">
                 <div class="tweet-header">
@@ -327,8 +414,8 @@ class TweetColumn {
                         ${avatarContent}
                     </div>
                     <div class="tweet-user-info">
-                        <div class="tweet-name">${this.escapeHtml(tweet.user.name)}</div>
-                        <div class="tweet-username">@${this.escapeHtml(tweet.user.username)}</div>
+                        <div class="tweet-name">${this.escapeHtml(displayName)}</div>
+                        <div class="tweet-username">@${this.escapeHtml(displayUsername)}</div>
                         <div class="tweet-timestamp">${tweet.timestamp}</div>
                     </div>
                 </div>
@@ -352,32 +439,42 @@ class TweetColumn {
         `;
     }
 
+
     formatTweetText(text) {
+        if (!text) return '';
+        
         // Basic formatting for hashtags, mentions, and URLs
         return this.escapeHtml(text)
             .replace(/#(\w+)/g, '<span style="color: var(--color-primary);">#$1</span>')
             .replace(/@(\w+)/g, '<span style="color: var(--color-primary);">@$1</span>');
     }
 
+
     formatNumber(num) {
+        if (!num || isNaN(num)) return '0';
         if (num < 1000) return num.toString();
         if (num < 1000000) return (num / 1000).toFixed(1) + 'K';
         return (num / 1000000).toFixed(1) + 'M';
     }
 
+
     escapeHtml(text) {
+        if (!text) return '';
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
     }
+
 
     createElement() {
         const columnDiv = document.createElement('div');
         columnDiv.className = 'tweet-column';
         columnDiv.dataset.columnId = this.id;
 
+
         const title = this.config.query;
         const icon = 'fas fa-search';
+
 
         columnDiv.innerHTML = `
             <div class="column-header">
@@ -400,14 +497,17 @@ class TweetColumn {
             <div class="column-content"></div>
         `;
 
+
         this.element = columnDiv;
         return columnDiv;
     }
+
 
     startAutoRefresh() {
         if (state.refreshIntervals.has(this.id)) {
             clearInterval(state.refreshIntervals.get(this.id));
         }
+
 
         const interval = setInterval(() => {
             this.loadTweets(true); // Silent refresh
@@ -416,6 +516,7 @@ class TweetColumn {
         state.refreshIntervals.set(this.id, interval);
         console.log(`Started auto-refresh for column ${this.id} every ${CONFIG.refreshInterval/1000} seconds`);
     }
+
 
     stopAutoRefresh() {
         if (state.refreshIntervals.has(this.id)) {
@@ -426,15 +527,18 @@ class TweetColumn {
     }
 }
 
+
 // Column Manager
 const columnManager = {
     container: null,
     emptyState: null,
 
+
     init() {
         this.container = document.getElementById('columnsContainer');
         this.emptyState = document.getElementById('emptyState');
     },
+
 
     addColumn(type, config) {
         const id = 'col_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
@@ -454,6 +558,7 @@ const columnManager = {
         return column;
     },
 
+
     removeColumn(id) {
         const column = state.columns.get(id);
         if (column) {
@@ -466,12 +571,14 @@ const columnManager = {
         }
     },
 
+
     refreshColumn(id) {
         const column = state.columns.get(id);
         if (column) {
             column.loadTweets(false);
         }
     },
+
 
     updateEmptyState() {
         if (state.columns.size === 0) {
@@ -482,23 +589,28 @@ const columnManager = {
     }
 };
 
+
 // Global functions for onclick handlers
 function removeColumn(id) { 
     columnManager.removeColumn(id); 
 }
 
+
 function refreshColumn(id) { 
     columnManager.refreshColumn(id); 
 }
+
 
 function retryColumn(id) { 
     columnManager.refreshColumn(id); 
 }
 
+
 function loadNewTweets(id) { 
     const column = state.columns.get(id);
     if (column) column.loadNewTweets();
 }
+
 
 // UI Functions
 function showLoading(text = 'Loading...') {
@@ -508,10 +620,12 @@ function showLoading(text = 'Loading...') {
     if (loadingOverlay) loadingOverlay.classList.remove('hidden');
 }
 
+
 function hideLoading() {
     const loadingOverlay = document.getElementById('loadingOverlay');
     if (loadingOverlay) loadingOverlay.classList.add('hidden');
 }
+
 
 function showAddColumnModal() {
     console.log('showAddColumnModal called');
@@ -531,6 +645,7 @@ function showAddColumnModal() {
     }
 }
 
+
 function hideAddColumnModal() {
     console.log('hideAddColumnModal called');
     const modal = document.getElementById('addColumnModal');
@@ -541,10 +656,12 @@ function hideAddColumnModal() {
     resetAddColumnForm();
 }
 
+
 function resetAddColumnForm() {
     const searchQuery = document.getElementById('searchQuery');
     if (searchQuery) searchQuery.value = '';
 }
+
 
 function confirmAddColumn() {
     console.log('confirmAddColumn called');
@@ -572,6 +689,7 @@ function confirmAddColumn() {
     hideAddColumnModal();
 }
 
+
 function toggleTheme() {
     const body = document.body;
     const themeButton = document.getElementById('themeToggle');
@@ -586,6 +704,7 @@ function toggleTheme() {
         state.theme = 'light';
     }
 }
+
 
 // Initialize Application
 document.addEventListener('DOMContentLoaded', function() {
@@ -730,6 +849,7 @@ document.addEventListener('DOMContentLoaded', function() {
         refreshInterval: `${CONFIG.refreshInterval / 1000} seconds`
     });
 });
+
 
 // Error handling
 window.addEventListener('unhandledrejection', event => {
